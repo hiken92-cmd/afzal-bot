@@ -13,6 +13,43 @@ _rates_cache = {
     "banks": None
 }
 
+def get_font(size: int, bold: bool = False):
+    """Кроссплатформенный загрузчик шрифтов для Windows, Linux/Render и macOS."""
+    candidates = []
+    if bold:
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "C:/Windows/Fonts/segoeuib.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+            "DejaVuSans-Bold.ttf",
+            "arialbd.ttf"
+        ]
+    else:
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "DejaVuSans.ttf",
+            "arial.ttf"
+        ]
+        
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+            
+    try:
+        return ImageFont.load_default(size=size)
+    except Exception:
+        return ImageFont.load_default()
+
 def clean_num(val_str: str) -> float:
     """Извлекает число из строки вида '11 870 сум'."""
     clean = re.sub(r"[^\d.]", "", val_str.replace(" ", "").replace(",", "."))
@@ -231,13 +268,13 @@ def generate_currency_infographic_bytes(force_refresh: bool = False) -> bytes:
     img = Image.new("RGB", (width, height), color="#0B132B")
     draw = ImageDraw.Draw(img)
 
-    # Шрифты Windows
-    font_title = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", 42)
-    font_subtitle = ImageFont.truetype("C:/Windows/Fonts/segoeui.ttf", 24)
-    font_header = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", 29)
-    font_bold = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", 27)
-    font_badge = ImageFont.truetype("C:/Windows/Fonts/segoeuib.ttf", 17)
-    font_small = ImageFont.truetype("C:/Windows/Fonts/segoeui.ttf", 21)
+    # Кроссплатформенные шрифты
+    font_title = get_font(42, bold=True)
+    font_subtitle = get_font(24, bold=False)
+    font_header = get_font(29, bold=True)
+    font_bold = get_font(27, bold=True)
+    font_badge = get_font(17, bold=True)
+    font_small = get_font(21, bold=False)
 
     # Верхняя плашка
     draw.rectangle([0, 0, width, 145], fill="#1C2541")
