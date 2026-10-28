@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Афзал AI Помощник</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Шапка приложения -->
+    <header class="app-header">
+      <div class="user-profile">
+        <div class="avatar" id="userAvatar">A</div>
+        <div class="user-meta">
+          <h2 id="userName">Привет, Гость!</h2>
+          <span class="badge-status">⚡️ AI Помощник активен</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Навигационные вкладки -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="nutrition">
+        <span class="icon">🥗</span>
+        <span class="label">Нутрициолог</span>
+      </button>
+      <button class="tab-btn" data-tab="translator">
+        <span class="icon">🌐</span>
+        <span class="label">Переводчик</span>
+      </button>
+      <button class="tab-btn" data-tab="currency">
+        <span class="icon">💵</span>
+        <span class="label">Валютчик</span>
+      </button>
+    </nav>
+
+    <!-- ВКЛАДКА 1: НУТРИЦИОЛОГ -->
+    <main class="tab-content active" id="tab-nutrition">
+      <!-- Загрузка фото -->
+      <section class="card upload-card">
+        <div class="upload-zone" id="dropZone">
+          <input type="file" id="foodPhotoInput" accept="image/*" capture="environment">
+          <div class="upload-idle" id="uploadIdle">
+            <div class="camera-icon">📸</div>
+            <h3>Сфотографируйте блюдо</h3>
+            <p>или выберите фото из галереи</p>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('foodPhotoInput').click()">
+              Выбрать фото
+            </button>
+          </div>
+          <div class="upload-preview hidden" id="uploadPreview">
+            <img id="previewImage" alt="Превью блюда">
+            <div class="preview-overlay" id="loadingSpinner">
+              <div class="spinner"></div>
+              <span>Нейросеть считает КБЖУ...</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Текстовый ввод блюда -->
+      <section class="card text-input-card">
+        <div class="input-row">
+          <input type="text" id="foodTextInput" placeholder="Или опишите текстом (напр: плов 300г)...">
+          <button class="btn btn-secondary" id="btnAnalyzeText">Рассчитать</button>
+        </div>
+      </section>
+
+      <!-- Результат расчета блюда -->
+      <section class="card result-card hidden" id="nutritionResult">
+        <div class="result-header">
+          <h3 id="resDishName">Название блюда</h3>
+          <span class="badge-accuracy" id="resConfidence">🎯 95% точность</span>
+        </div>
+        <p class="portion-meta" id="resPortionMeta">Вес: ~350 г • Запекание</p>
+
+        <!-- Макросы КБЖУ -->
+        <div class="macros-grid">
+          <div class="macro-box calories">
+            <span class="val" id="resCalories">0</span>
+            <span class="lbl">🔥 Ккал</span>
+          </div>
+          <div class="macro-box proteins">
+            <span class="val" id="resProteins">0г</span>
+            <span class="lbl">🥩 Белки</span>
+          </div>
+          <div class="macro-box fats">
+            <span class="val" id="resFats">0г</span>
+            <span class="lbl">🥑 Жиры</span>
+          </div>
+          <div class="macro-box carbs">
+            <span class="val" id="resCarbs">0г</span>
+            <span class="lbl">🍞 Углеводы</span>
+          </div>
+        </div>
+
+        <!-- Предупреждение о масле -->
+        <div class="alert-box hidden" id="resHiddenAlert"></div>
+
+        <!-- Состав -->
+        <div class="ingredients-list" id="resIngredientsBlock">
+          <h4>Ингредиенты:</h4>
+          <ul id="resIngredientsList"></ul>
+        </div>
+
+        <!-- Совет -->
+        <div class="advice-box" id="resAdviceBox">
+          <span class="icon">💡</span>
+          <p id="resAdviceText"></p>
+        </div>
+      </section>
+    </main>
+
+    <!-- ВКЛАДКА 2: ПЕРЕВОДЧИК -->
+    <main class="tab-content" id="tab-translator">
+      <section class="card translator-card">
+        <div class="lang-selector-bar">
+          <span class="lang-label">Перевести на:</span>
+          <select id="targetLangSelect" class="select-control">
+            <option value="ru" selected>🇷🇺 Русский</option>
+            <option value="en">🇺🇸 English</option>
+            <option value="uz">🇺🇿 O'zbekcha</option>
+            <option value="es">🇪🇸 Español</option>
+            <option value="de">🇩🇪 Deutsch</option>
+            <option value="fr">🇫🇷 Français</option>
+            <option value="tr">🇹🇷 Türkçe</option>
+            <option value="zh">🇨🇳 中文</option>
+            <option value="ar">🇸🇦 العربية</option>
+          </select>
+        </div>
+
+        <div class="style-selector-bar">
+          <span class="lang-label">Стиль:</span>
+          <div class="style-chips">
+            <button class="chip active" data-style="general">Обычный</button>
+            <button class="chip" data-style="business">Деловой</button>
+            <button class="chip" data-style="casual">Разговорный</button>
+          </div>
+        </div>
+
+        <div class="textarea-wrapper">
+          <textarea id="translateInput" placeholder="Введите или вставьте любой текст..."></textarea>
+          <button class="btn btn-primary" id="btnTranslate">Перевести (0.3с)</button>
+        </div>
+
+        <div class="translate-output-box hidden" id="translateOutputBox">
+          <div class="output-header">
+            <span>Результат:</span>
+            <button class="copy-btn" id="btnCopyTranslation">📋 Копировать</button>
+          </div>
+          <div class="output-text" id="translateOutputText"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ВКЛАДКА 3: ВАЛЮТЧИК -->
+    <main class="tab-content" id="tab-currency">
+      <!-- Официальный курс ЦБ РУз -->
+      <section class="card cbu-card">
+        <div class="cbu-header">
+          <span>🏛 ЦЕНТРАЛЬНЫЙ БАНК РУз</span>
+          <span class="cbu-date" id="cbuDate">--.--.----</span>
+        </div>
+        <div class="cbu-rates-row">
+          <div class="cbu-item main">
+            <span class="cur">1 USD</span>
+            <span class="rate" id="cbuUsdRate">11 861.96</span>
+            <span class="diff positive" id="cbuUsdDiff">+23.04</span>
+          </div>
+          <div class="cbu-item mini">
+            <span class="cur">1 EUR</span>
+            <span class="rate" id="cbuEurRate">13 278.28</span>
+          </div>
+          <div class="cbu-item mini">
+            <span class="cur">1 RUB</span>
+            <span class="rate" id="cbuRubRate">147.13</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Интерактивный калькулятор -->
+      <section class="card converter-card">
+        <h3>Калькулятор валют</h3>
+        <div class="converter-grid">
+          <div class="input-field">
+            <label>🇺🇸 USD (Доллары)</label>
+            <input type="number" id="inputUsd" value="100">
+          </div>
+          <div class="exchange-icon" id="btnSwapCurrency">⇄</div>
+          <div class="input-field">
+            <label>🇺🇿 UZS (Сумы)</label>
+            <input type="text" id="inputUzs" readonly>
+          </div>
+        </div>
+        <p class="converter-hint" id="converterHint">По лучшему курсу покупки банков</p>
+      </section>
+
+      <!-- Курсы банков Узбекистана -->
+      <section class="card banks-card">
+        <div class="banks-header">
+          <h3>Курсы в банках Ташкента</h3>
+          <button class="btn-refresh" id="btnRefreshRates">🔄 Обновить</button>
+        </div>
+        <div class="table-responsive">
+          <table class="banks-table">
+            <thead>
+              <tr>
+                <th>Банк</th>
+                <th class="text-right">Покупка</th>
+                <th class="text-right">Продажа</th>
+              </tr>
+            </thead>
+            <tbody id="banksTableBody">
+              <tr><td colspan="3" class="text-center">Загрузка котировок...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+

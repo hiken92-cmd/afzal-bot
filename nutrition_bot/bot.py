@@ -46,8 +46,8 @@ async def start_web_server():
     return runner
 
 async def main():
-    if not BOT_TOKEN or "8701243779" not in BOT_TOKEN:
-        logger.error("BOT_TOKEN не установлен!")
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN не установлен в переменных окружения!")
         return
 
     # 1. Инициализация базы данных SQLite
