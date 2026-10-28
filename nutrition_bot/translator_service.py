@@ -67,13 +67,11 @@ def fast_translate_text(text: str, target_lang: str = "ru") -> Dict[str, Any]:
 async def translate_text_fast(text: str, target_lang: str = "ru", style: str = "general") -> Dict[str, Any]:
     """
     Асинхронная обертка для быстрого перевода.
-    Если выбран специализированный стиль, адаптирует текст.
+    Использует сверхбыстрый API, а при ошибках или блокировках ЦОД переключается на Gemini 3.5 Flash-lite.
     """
-    res = await asyncio.to_thread(fast_translate_text, text, target_lang)
-    
-    # Если стиль не general и длина текста приличная, можно быстро адаптировать через Gemini
-    if style != "general" and len(text) > 10:
-        try:
+    try:
+        res = await asyncio.to_thread(fast_translate_text, text, target_lang)
+        if style != "general" and len(text) > 10:
             api_key = get_gemini_api_key()
             if api_key:
                 client = genai.Client(api_key=api_key)
@@ -89,10 +87,27 @@ async def translate_text_fast(text: str, target_lang: str = "ru", style: str = "
                 )
                 if gem_res.text:
                     res["translated_text"] = gem_res.text.strip()
-        except Exception as e:
-            logger.warning(f"Ошибка стилизации перевода: {e}")
-            
-    return res
+        return res
+    except Exception as e:
+        logger.warning(f"Google Translate fallback to Gemini ({e})")
+        api_key = get_gemini_api_key()
+        client = genai.Client(api_key=api_key)
+        lang_name = LANGUAGES.get(target_lang, target_lang)
+        style_name = STYLES.get(style, "нейтральный")
+        prompt = (
+            f"Переведи следующий текст на {lang_name} в стиле '{style_name}'. "
+            f"Верни ТОЛЬКО переведенный текст без вступительных слов и кавычек:\n\n{text}"
+        )
+        gem_res = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-3.5-flash-lite",
+            contents=[prompt]
+        )
+        return {
+            "translated_text": gem_res.text.strip() if gem_res.text else text,
+            "detected_lang": "auto",
+            "target_lang": target_lang
+        }
 
 async def translate_image_ocr(image_bytes: bytes, target_lang: str = "ru", style: str = "general") -> Dict[str, Any]:
     """
