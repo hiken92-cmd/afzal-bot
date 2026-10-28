@@ -46,8 +46,8 @@ async def start_web_server():
     return runner
 
 async def main():
-    if not BOT_TOKEN:
-        logger.error("BOT_TOKEN не установлен в переменных окружения!")
+    if not BOT_TOKEN or "8701243779" not in BOT_TOKEN:
+        logger.error("BOT_TOKEN не установлен!")
         return
 
     # 1. Инициализация базы данных SQLite
@@ -92,10 +92,26 @@ async def main():
     # Сбрасываем старые накопившиеся вебхуки и запускаем поллинг
     try:
         await bot.delete_webhook(drop_pending_updates=True)
+        # Запускаем фоновый keep-alive пинг для 24/7 работы на Render
+        asyncio.create_task(keep_alive_ping())
         await dp.start_polling(bot)
     finally:
         await runner.cleanup()
         await bot.session.close()
+
+async def keep_alive_ping():
+    """Фоновый пинг раз в 10 минут, предотвращающий засыпание Render."""
+    import aiohttp
+    await asyncio.sleep(60) # ждем 1 мин после старта
+    while True:
+        try:
+            if WEB_APP_URL and WEB_APP_URL.startswith("https://"):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{WEB_APP_URL}/api/currency", timeout=15) as resp:
+                        logger.info(f"Keep-alive ping status: {resp.status}")
+        except Exception as e:
+            logger.debug(f"Keep-alive ping error: {e}")
+        await asyncio.sleep(600) # каждые 10 минут (Render засыпает через 15 мин)
 
 if __name__ == "__main__":
     try:
