@@ -1,8 +1,6 @@
-import urllib.request
-import urllib.parse
-import json
 import logging
 import asyncio
+import json
 from typing import Dict, Any, Optional
 from google import genai
 from google.genai import types
@@ -28,115 +26,106 @@ LANGUAGES = {
 }
 
 STYLES = {
-    "general": "Обычный / Нейтральный",
-    "business": "Деловой / Официальный",
-    "casual": "Разговорный / Дружеский",
-    "literary": "Художественный / Литературный"
+    "general": "Естественный, грамотный и точный перевод",
+    "business": "Строгий деловой, официальный и дипломатичный стиль (для деловой переписки и документов)",
+    "casual": "Живой разговорный, дружеский стиль со сленгом и естественными идиомами",
+    "literary": "Богатый художественный и литературный стиль с красивыми речевыми оборотами"
 }
 
-def fast_translate_text(text: str, target_lang: str = "ru") -> Dict[str, Any]:
-    """
-    Сверхбыстрый нейроперевод текста через Google Translate API (0.2-0.4 сек).
-    """
-    encoded_text = urllib.parse.quote(text)
-    url = f"https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl={target_lang}&dt=t&q={encoded_text}"
-    
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    })
-    
-    with urllib.request.urlopen(req, timeout=5) as response:
-        data = json.loads(response.read().decode("utf-8"))
-        
-        # Сборка предложений
-        translated_parts = []
-        if data and len(data) > 0 and data[0]:
-            for sentence in data[0]:
-                if sentence and len(sentence) > 0 and sentence[0]:
-                    translated_parts.append(sentence[0])
-        
-        translated_text = "".join(translated_parts).strip()
-        detected_lang = data[2] if len(data) > 2 else "auto"
-        
-        return {
-            "translated_text": translated_text,
-            "detected_lang": detected_lang,
-            "target_lang": target_lang
-        }
+_gemini_client: Optional[genai.Client] = None
+
+def get_client() -> genai.Client:
+    global _gemini_client
+    if _gemini_client is None:
+        api_key = get_gemini_api_key()
+        if not api_key:
+            raise ValueError("API-ключ Google Gemini не настроен!")
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
 
 async def translate_text_fast(text: str, target_lang: str = "ru", style: str = "general") -> Dict[str, Any]:
     """
-    Асинхронная обертка для быстрого перевода.
-    Использует сверхбыстрый API, а при ошибках или блокировках ЦОД переключается на Gemini 3.5 Flash-lite.
+    Высокоточный нейроперевод текста нового поколения через Gemini 3.5 Flash-lite.
+    Учитывает контекст, идиомы, профессиональную терминологию и выбранный стиль.
     """
-    try:
-        res = await asyncio.to_thread(fast_translate_text, text, target_lang)
-        if style != "general" and len(text) > 10:
-            api_key = get_gemini_api_key()
-            if api_key:
-                client = genai.Client(api_key=api_key)
-                prompt = (
-                    f"Стилизуй следующий перевод в {STYLES.get(style, style)} стиль. "
-                    f"Сохраняй точный смысл, верни ТОЛЬКО готовый перевод без вступительных слов:\n\n"
-                    f"{res['translated_text']}"
-                )
-                gem_res = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model="gemini-3.5-flash-lite",
-                    contents=[prompt]
-                )
-                if gem_res.text:
-                    res["translated_text"] = gem_res.text.strip()
-        return res
-    except Exception as e:
-        logger.warning(f"Google Translate fallback to Gemini ({e})")
-        api_key = get_gemini_api_key()
-        client = genai.Client(api_key=api_key)
-        lang_name = LANGUAGES.get(target_lang, target_lang)
-        style_name = STYLES.get(style, "нейтральный")
-        prompt = (
-            f"Переведи следующий текст на {lang_name} в стиле '{style_name}'. "
-            f"Верни ТОЛЬКО переведенный текст без вступительных слов и кавычек:\n\n{text}"
-        )
-        gem_res = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-3.5-flash-lite",
-            contents=[prompt]
-        )
-        return {
-            "translated_text": gem_res.text.strip() if gem_res.text else text,
-            "detected_lang": "auto",
-            "target_lang": target_lang
-        }
+    client = get_client()
+    target_name = LANGUAGES.get(target_lang, target_lang)
+    style_desc = STYLES.get(style, STYLES["general"])
+
+    system_instruction = (
+        "Ты — выдающийся синхронный переводчик и профессиональный лингвист высшей категории.\n"
+        "Твоя задача — переводить тексты с глубоким пониманием контекста, идиоматических выражений, "
+        "культурологических нюансов и сленга.\n"
+        "ПРАВИЛА:\n"
+        "1. Переводи точно, естественно и красиво, передавая истинный смысл, а не дословный машинный подстрочник.\n"
+        "2. Строго соблюдай требуемый стиль речи.\n"
+        "3. Выводи ИСКЛЮЧИТЕЛЬНО готовый переведенный текст. Никаких вступительных слов, пояснений, кавычек или примечаний."
+    )
+
+    prompt = (
+        f"Целевой язык перевода: {target_name}\n"
+        f"Требуемый стиль: {style_desc}\n\n"
+        f"Исходный текст для перевода:\n{text}"
+    )
+
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=0.2
+    )
+
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-pro-preview"]
+    last_err = None
+
+    for model_name in models_to_try:
+        try:
+            res = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
+                contents=prompt,
+                config=config
+            )
+            if res and res.text:
+                translated_text = res.text.strip()
+                return {
+                    "translated_text": translated_text,
+                    "detected_lang": "auto",
+                    "target_lang": target_lang
+                }
+        except Exception as e:
+            logger.warning(f"Ошибка перевода на модели {model_name}: {e}")
+            last_err = e
+            continue
+
+    raise RuntimeError(f"Не удалось выполнить перевод: {last_err}")
 
 async def translate_image_ocr(image_bytes: bytes, target_lang: str = "ru", style: str = "general") -> Dict[str, Any]:
     """
-    Сверхбыстрое оптическое распознавание (OCR) и перевод текста с фото через Gemini 3.5 Flash-lite.
+    Сверхточное оптическое распознавание (OCR) и перевод текста с фото через мультимодальный Gemini 3.5 Flash-lite.
     """
-    api_key = get_gemini_api_key()
-    if not api_key:
-        raise ValueError("API-ключ Google Gemini не настроен!")
-
+    client = get_client()
     optimized_bytes = await asyncio.to_thread(optimize_image_for_vision, image_bytes)
-    client = genai.Client(api_key=api_key)
 
     lang_name = LANGUAGES.get(target_lang, target_lang)
-    style_name = STYLES.get(style, "нейтральный")
+    style_desc = STYLES.get(style, STYLES["general"])
 
-    prompt = f"""Найди весь текст на изображении, определи его исходный язык и переведи на {lang_name}.
-Стиль перевода: {style_name}.
+    prompt = f"""Внимательно распознай весь текст на изображении (вывески, документы, надписи, меню, чеки).
+Определи исходный язык и переведи текст на {lang_name} с сохранением точного контекста.
+Стиль перевода: {style_desc}.
 
-Верни ответ ТОЛЬКО в формате JSON:
+Верни результат СТРОГО в формате JSON:
 {{
   "has_text": true,
   "original_text": "распознанный исходный текст",
-  "translated_text": "переведенный текст",
+  "translated_text": "высокоточный литературный перевод",
   "detected_lang": "исходный язык"
 }}
-Если на изображении нет текста, верни: {{"has_text": false}}
+Если на изображении нет читаемого текста, верни: {{"has_text": false}}
 """
 
-    for m in ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash"]:
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.5-flash"]
+    last_err = None
+
+    for m in models_to_try:
         try:
             response = await asyncio.to_thread(
                 client.models.generate_content,
@@ -154,7 +143,7 @@ async def translate_image_ocr(image_bytes: bytes, target_lang: str = "ru", style
             return data
         except Exception as e:
             logger.warning(f"Ошибка OCR перевода {m}: {e}")
+            last_err = e
             continue
 
-    raise RuntimeError("Не удалось перевести текст с фото.")
-
+    raise RuntimeError(f"Не удалось перевести текст с фото: {last_err}")
