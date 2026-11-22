@@ -51,6 +51,13 @@ async def init_db():
         
         # Индексы для моментальной выборки статистики
         await db.execute("CREATE INDEX IF NOT EXISTS idx_meals_user_created ON meals (user_id, created_at);")
+        
+        # Миграция: колонка режима точности нутрициолога
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN nutrition_precision TEXT DEFAULT 'expert';")
+        except Exception:
+            pass
+
         await db.commit()
 
 async def get_or_create_user(user_id: int, username: str = "") -> Dict[str, Any]:
@@ -93,6 +100,29 @@ async def set_user_mode(user_id: int, mode: str):
             ON CONFLICT(user_id) DO UPDATE SET mode = excluded.mode
         """, (user_id, mode))
         await db.commit()
+
+async def get_nutrition_precision(user_id: int) -> str:
+    """Возвращает режим точности нутрициолога ('expert' или 'fast')."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT nutrition_precision FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0]:
+                return row[0]
+        return "expert"
+
+async def set_nutrition_precision(user_id: int, precision: str):
+    """Устанавливает режим точности нутрициолога ('expert' или 'fast')."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await get_or_create_user(user_id)
+        await db.execute("UPDATE users SET nutrition_precision = ? WHERE user_id = ?", (precision, user_id))
+        await db.commit()
+
+async def toggle_nutrition_precision(user_id: int) -> str:
+    """Переключает режим точности между 'expert' и 'fast'."""
+    current = await get_nutrition_precision(user_id)
+    new_prec = "fast" if current == "expert" else "expert"
+    await set_nutrition_precision(user_id, new_prec)
+    return new_prec
 
 async def set_translator_settings(user_id: int, target_lang: Optional[str] = None, style: Optional[str] = None):
     async with aiosqlite.connect(DB_PATH) as db:

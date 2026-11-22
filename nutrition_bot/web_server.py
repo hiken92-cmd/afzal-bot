@@ -37,20 +37,21 @@ async def handle_index(request):
     return web.FileResponse(index_path)
 
 async def api_analyze_food(request):
-    """API анализа еды по фото (base64) или по тексту."""
+    """API анализа еды по фото (base64) или по тексту с поддержкой выбора точности."""
     try:
         data = await request.json()
+        precision = data.get("precision", "expert")
         
         # Анализ по фото
         if "image_base64" in data and data["image_base64"]:
             img_bytes = base64.b64decode(data["image_base64"])
             user_note = data.get("note", "")
-            res = await analyze_food_image(img_bytes, user_note=user_note)
+            res = await analyze_food_image(img_bytes, user_note=user_note, precision=precision)
             return web.json_response(res)
             
         # Анализ по тексту
         elif "text" in data and data["text"]:
-            res = await analyze_meal_text(data["text"])
+            res = await analyze_meal_text(data["text"], precision=precision)
             return web.json_response(res)
             
         return web.json_response({"error": "Отсутствует фото или текст"}, status=400)

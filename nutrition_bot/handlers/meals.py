@@ -12,10 +12,13 @@ from ..database import (
     add_meal,
     get_today_stats,
     get_user_profile,
-    delete_last_meal
+    delete_last_meal,
+    get_nutrition_precision,
+    set_nutrition_precision,
+    toggle_nutrition_precision
 )
 from ..ai_service import analyze_food_image, analyze_meal_text, format_nutrition_result
-from ..keyboards import get_meal_confirm_keyboard, get_nutrition_menu_keyboard
+from ..keyboards import get_meal_confirm_keyboard, get_nutrition_menu_keyboard, get_precision_inline_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,39 @@ def set_draft(draft_id: str, draft_data: dict):
 
 class MealStates(StatesGroup):
     waiting_meal_text = State()
+
+@router.message(F.text.in_({"🎯 Точность: Эксперт", "⚡️ Точность: Быстрый"}))
+async def btn_toggle_precision(message: Message):
+    new_prec = await toggle_nutrition_precision(message.from_user.id)
+    if new_prec == "expert":
+        msg = (
+            "🎯 <b>Включен Экспертный режим (Gemini 3.5 Flash)!</b>\n\n"
+            "🔬 <b>Глубокий анализ:</b>\n"
+            "• Визуальный аудит диаметра тарелки и высоты горки порции.\n"
+            "• Точный расчет впитанного масла при жарке (+80-180 ккал) и жирности соусов.\n"
+            "• Максимальная научная точность декомпозиции ингредиентов (до 95%).\n"
+            "• Время отклика: ~1.5–2.5 сек."
+        )
+    else:
+        msg = (
+            "⚡️ <b>Включен Быстрый режим (Gemini 3.5 Flash-Lite)!</b>\n\n"
+            "⚡️ <b>Особенности:</b>\n"
+            "• Молниеносный ответ (~0.8 сек).\n"
+            "• Оптимально для простых продуктов, фруктов и быстрых перекусов."
+        )
+    await message.answer(msg, reply_markup=get_nutrition_menu_keyboard(new_prec), parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("set_precision:"))
+async def callback_set_precision(callback: CallbackQuery):
+    prec = callback.data.split(":")[1]
+    await set_nutrition_precision(callback.from_user.id, prec)
+    label = "Экспертный (Gemini 3.5 Flash)" if prec == "expert" else "Быстрый (Flash-Lite)"
+    await callback.message.edit_text(
+        f"✅ Режим точности установлен: <b>{label}</b>",
+        reply_markup=get_precision_inline_keyboard(prec),
+        parse_mode="HTML"
+    )
+    await callback.answer(f"Выбран режим: {label}")
 
 @router.message(F.text == "📸 Распознать по фото")
 async def btn_prompt_photo(message: Message):
@@ -67,7 +103,8 @@ async def handle_meal_text_input(message: Message, state: FSMContext):
 
     status_msg = await message.answer("⚡️ <i>Рассчитываю состав и КБЖУ блюда...</i>", parse_mode="HTML")
     try:
-        data = await analyze_meal_text(message.text)
+        precision = await get_nutrition_precision(message.from_user.id)
+        data = await analyze_meal_text(message.text, precision=precision)
         if not data.get("is_food", True):
             await status_msg.edit_text(format_nutrition_result(data), parse_mode="HTML")
             return
@@ -130,7 +167,8 @@ async def handle_food_photo(message: Message, state: FSMContext):
             return
 
         user_caption = message.caption or ""
-        data = await analyze_food_image(image_bytes, user_note=user_caption)
+        precision = await get_nutrition_precision(message.from_user.id)
+        data = await analyze_food_image(image_bytes, user_note=user_caption, precision=precision)
 
         if not data.get("is_food", True):
             await status_msg.edit_text(format_nutrition_result(data), parse_mode="HTML")
@@ -271,17 +309,18 @@ async def callback_cancel_meal(callback: CallbackQuery):
 @router.message(F.text == "🗑 Удалить последний прием")
 async def btn_delete_last(message: Message):
     ok = await delete_last_meal(message.from_user.id)
+    precision = await get_nutrition_precision(message.from_user.id)
     if ok:
         stats = await get_today_stats(message.from_user.id)
         await message.answer(
             f"🗑 <b>Последний прием пищи успешно удален!</b>\n\n"
             f"Текущий итог за сегодня: <b>{stats['calories']:,.0f} ккал</b> ({stats['count']} приемов).".replace(",", " "),
-            reply_markup=get_nutrition_menu_keyboard(),
+            reply_markup=get_nutrition_menu_keyboard(precision),
             parse_mode="HTML"
         )
     else:
         await message.answer("⚠️ В вашем дневнике за сегодня пока нет записей.",
-                             reply_markup=get_nutrition_menu_keyboard(), parse_mode="HTML")
+                             reply_markup=get_nutrition_menu_keyboard(precision), parse_mode="HTML")
 
 
 # Свободный текстовый ввод блюда в режиме нутрициолога
@@ -302,7 +341,8 @@ async def handle_nutrition_free_text(message: Message):
     # Если пользователь в режиме нутрициолога просто написал блюдо текстом
     status_msg = await message.answer("⚡️ <i>Рассчитываю состав и КБЖУ блюда...</i>", parse_mode="HTML")
     try:
-        data = await analyze_meal_text(txt)
+        precision = await get_nutrition_precision(message.from_user.id)
+        data = await analyze_meal_text(txt, precision=precision)
         if not data.get("is_food", True):
             await status_msg.edit_text(format_nutrition_result(data), parse_mode="HTML")
             return

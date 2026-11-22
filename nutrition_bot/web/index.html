@@ -41,6 +41,25 @@
 
     <!-- ВКЛАДКА 1: НУТРИЦИОЛОГ -->
     <main class="tab-content active" id="tab-nutrition">
+      <!-- Переключатель режима точности -->
+      <section class="card precision-card">
+        <div class="precision-header">
+          <span class="precision-title">🎯 Точность анализа:</span>
+          <div class="precision-toggle-group">
+            <button type="button" class="precision-toggle-btn active" id="precExpert" data-prec="expert">
+              <span class="prec-icon">🎯</span>
+              <span class="prec-text">Эксперт</span>
+              <span class="prec-badge">3.5 Flash</span>
+            </button>
+            <button type="button" class="precision-toggle-btn" id="precFast" data-prec="fast">
+              <span class="prec-icon">⚡️</span>
+              <span class="prec-text">Быстрый</span>
+              <span class="prec-badge">0.8с</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
       <!-- Загрузка фото -->
       <section class="card upload-card">
         <div class="upload-zone" id="dropZone">

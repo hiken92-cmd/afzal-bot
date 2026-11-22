@@ -13,7 +13,20 @@ if (tg) {
 
 // State
 let currentStyle = 'general';
+let currentPrecision = 'expert';
 let currencyData = null;
+
+// Precision selection (Nutritionist)
+document.querySelectorAll('.precision-toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.precision-toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentPrecision = btn.dataset.prec;
+    if (tg?.HapticFeedback) {
+      tg.HapticFeedback.selectionChanged();
+    }
+  });
+});
 
 // Tab Switching
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -65,7 +78,10 @@ foodPhotoInput.addEventListener('change', async (e) => {
       const response = await fetch('/api/analyze-food', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: event.target.result.split(',')[1] })
+        body: JSON.stringify({ 
+          image_base64: event.target.result.split(',')[1],
+          precision: currentPrecision
+        })
       });
       const data = await response.json();
       renderNutritionResult(data);
@@ -91,7 +107,10 @@ document.getElementById('btnAnalyzeText').addEventListener('click', async () => 
     const response = await fetch('/api/analyze-food', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text })
+      body: JSON.stringify({ 
+        text: text,
+        precision: currentPrecision
+      })
     });
     const data = await response.json();
     renderNutritionResult(data);
@@ -116,7 +135,8 @@ function renderNutritionResult(data) {
   }
 
   document.getElementById('resDishName').textContent = data.dish_name || 'Блюдо';
-  document.getElementById('resConfidence').textContent = `🎯 ${data.confidence_score || 95}% точность`;
+  const modelBadge = data.model_used && data.model_used.includes('lite') ? '⚡️ Flash-Lite' : '🎯 3.5 Flash';
+  document.getElementById('resConfidence').textContent = `${modelBadge} • ${data.confidence_score || 95}%`;
   document.getElementById('resPortionMeta').textContent = `Вес: ~${data.estimated_weight_g || 0} г • ${data.cooking_method || 'Готовое блюдо'}`;
 
   document.getElementById('resCalories').textContent = data.total_calories || 0;

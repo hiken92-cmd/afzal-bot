@@ -44,8 +44,9 @@ def get_web_app_inline_keyboard() -> InlineKeyboardMarkup:
         btn = InlineKeyboardButton(text="🌐 Открыть в браузере", url=url)
     return InlineKeyboardMarkup(inline_keyboard=[[btn]])
 
-def get_nutrition_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Меню раздела нутрициолога."""
+def get_nutrition_menu_keyboard(precision: str = "expert") -> ReplyKeyboardMarkup:
+    """Меню раздела нутрициолога с переключателем режима точности."""
+    mode_text = "🎯 Точность: Эксперт" if precision == "expert" else "⚡️ Точность: Быстрый"
     return ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -57,11 +58,35 @@ def get_nutrition_menu_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="🎯 Моя норма КБЖУ")
             ],
             [
-                KeyboardButton(text="🗑 Удалить последний прием"),
+                KeyboardButton(text=mode_text),
+                KeyboardButton(text="🗑 Удалить последний прием")
+            ],
+            [
                 KeyboardButton(text="🔙 Главное меню")
             ]
         ],
         resize_keyboard=True
+    )
+
+def get_precision_inline_keyboard(current: str = "expert") -> InlineKeyboardMarkup:
+    """Инлайн-переключатель моделей точности."""
+    expert_mark = "✅ " if current == "expert" else ""
+    fast_mark = "✅ " if current == "fast" else ""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{expert_mark}🎯 Экспертный (Gemini 3.5 Flash) — Макс. точность",
+                    callback_data="set_precision:expert"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"{fast_mark}⚡️ Быстрый (Gemini 3.5 Flash-Lite) — ~0.8 сек",
+                    callback_data="set_precision:fast"
+                )
+            ]
+        ]
     )
 
 def get_meal_confirm_keyboard(draft_id: str) -> InlineKeyboardMarkup:

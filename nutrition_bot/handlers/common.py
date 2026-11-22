@@ -3,7 +3,7 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 
-from ..database import get_or_create_user, set_user_mode
+from ..database import get_or_create_user, set_user_mode, get_nutrition_precision
 from ..config import get_web_app_url
 from ..keyboards import (
     get_root_menu_keyboard,
@@ -60,17 +60,20 @@ async def btn_back_to_main(message: Message, state: FSMContext):
 async def btn_enter_nutrition(message: Message, state: FSMContext):
     await state.clear()
     await set_user_mode(message.from_user.id, "nutrition")
+    precision = await get_nutrition_precision(message.from_user.id)
+    
+    prec_label = "🎯 <b>Экспертный (Gemini 3.5 Flash)</b> — глубокий анализ посуды, скрытого масла и граммовок" if precision == "expert" else "⚡️ <b>Быстрый (Flash-Lite)</b> — моментальный ответ ~0.8с"
     
     text = (
         "🥗 <b>Раздел «Афзал Нутрициолог» активирован!</b>\n\n"
-        "⚡️ <i>Обновленный движок: скорость анализа ~1 сек, точность расчета порций и скрытых калорий до 95%!</i>\n\n"
+        f"🔬 Текущий режим: {prec_label}\n\n"
         "📸 <b>Как пользоваться:</b>\n"
         "1. Просто <b>отправьте фото блюда</b> в этот чат (можно с подписью, например: <i>«съел половину»</i>).\n"
         "2. Или нажмите <b>«✍️ Описать текстом»</b> и перечислите съеденное.\n"
-        "3. После расчета вы сможете скорректировать порцию в один клик и сохранить ее в дневник питания!\n\n"
+        "3. Переключать точность можно кнопкой <b>«Точность»</b> в меню.\n\n"
         "Жду фото вашего приема пищи!"
     )
-    await message.answer(text, reply_markup=get_nutrition_menu_keyboard(), parse_mode="HTML")
+    await message.answer(text, reply_markup=get_nutrition_menu_keyboard(precision), parse_mode="HTML")
 
 @router.message(F.text == "🌐 Афзал Переводчик")
 async def btn_enter_translator(message: Message, state: FSMContext):
