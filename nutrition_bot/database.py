@@ -6,8 +6,12 @@ from typing import Dict, Any, List, Optional
 DB_PATH = os.path.join(os.path.dirname(__file__), "nutrition.db")
 
 async def init_db():
-    """Инициализация таблиц базы данных SQLite."""
+    """Инициализация базы данных SQLite с оптимизацией WAL и индексами."""
     async with aiosqlite.connect(DB_PATH) as db:
+        # Включение режима WAL для высокопроизводительной параллельной работы без блокировок
+        await db.execute("PRAGMA journal_mode = WAL;")
+        await db.execute("PRAGMA synchronous = NORMAL;")
+        
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -44,6 +48,9 @@ async def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         """)
+        
+        # Индексы для моментальной выборки статистики
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_meals_user_created ON meals (user_id, created_at);")
         await db.commit()
 
 async def get_or_create_user(user_id: int, username: str = "") -> Dict[str, Any]:
@@ -72,7 +79,6 @@ async def get_user_mode(user_id: int) -> str:
             if row:
                 return row[0] or "nutrition"
         
-        # Если пользователя нет в базе — автоматически регистрируем его в режиме nutrition
         await db.execute("""
             INSERT INTO users (user_id, mode) VALUES (?, 'nutrition')
             ON CONFLICT(user_id) DO NOTHING
@@ -134,17 +140,19 @@ async def add_meal(user_id: int, meal_name: str, calories: float, proteins: floa
         return cursor.lastrowid
 
 async def get_today_meals(user_id: int) -> List[Dict[str, Any]]:
+    """Возвращает приемы пищи за текущие сутки с учетом часового пояса Узбекистана (UTC+5)."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT * FROM meals 
-            WHERE user_id = ? AND date(created_at) = date('now', 'localtime')
+            WHERE user_id = ? AND date(created_at, '+5 hours') = date('now', '+5 hours')
             ORDER BY created_at DESC
         """, (user_id,)) as cursor:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
 
 async def get_today_stats(user_id: int) -> Dict[str, float]:
+    """Возвращает суммарную статистику КБЖУ за текущие сутки (UTC+5)."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("""
             SELECT 
@@ -154,7 +162,7 @@ async def get_today_stats(user_id: int) -> Dict[str, float]:
                 COALESCE(SUM(carbs), 0),
                 COUNT(id)
             FROM meals 
-            WHERE user_id = ? AND date(created_at) = date('now', 'localtime')
+            WHERE user_id = ? AND date(created_at, '+5 hours') = date('now', '+5 hours')
         """, (user_id,)) as cursor:
             row = await cursor.fetchone()
             return {
@@ -169,7 +177,7 @@ async def delete_last_meal(user_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("""
             SELECT id FROM meals 
-            WHERE user_id = ? AND date(created_at) = date('now', 'localtime')
+            WHERE user_id = ? AND date(created_at, '+5 hours') = date('now', '+5 hours')
             ORDER BY created_at DESC LIMIT 1
         """, (user_id,)) as cursor:
             row = await cursor.fetchone()
@@ -185,7 +193,7 @@ async def clear_today_meals(user_id: int) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute("""
             DELETE FROM meals 
-            WHERE user_id = ? AND date(created_at) = date('now', 'localtime')
+            WHERE user_id = ? AND date(created_at, '+5 hours') = date('now', '+5 hours')
         """, (user_id,))
         await db.commit()
         return cursor.rowcount

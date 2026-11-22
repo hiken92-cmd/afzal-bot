@@ -85,6 +85,21 @@ async def btn_enter_translator(message: Message, state: FSMContext):
     )
     await message.answer(text, reply_markup=get_translator_menu_keyboard(), parse_mode="HTML")
 
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    text = (
+        "📖 <b>Справка по командам и возможностям бота:</b>\n\n"
+        "• /start — главное меню и выбор режима\n"
+        "• /webapp — открыть удобный веб-сайт (Mini App)\n"
+        "• /help — эта справка\n\n"
+        "<b>3 основных режима:</b>\n"
+        "1. 🥗 <b>Нутрициолог:</b> отправьте любое фото еды или опишите текстом для расчета КБЖУ.\n"
+        "2. 🌐 <b>Переводчик:</b> отправьте текст или фото документа/вывески для перевода.\n"
+        "3. 💵 <b>Валютчик:</b> котировки 29 банков Узбекистана, конвертер и инфографика.\n\n"
+        "📱 Вы также можете пользоваться ботом через веб-приложение кнопкой «📱 Веб-сайт»."
+    )
+    await message.answer(text, parse_mode="HTML")
+
 @router.message(F.text == "ℹ️ О боте")
 async def btn_about(message: Message):
     about_text = (

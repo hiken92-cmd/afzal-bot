@@ -21,8 +21,14 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-# Временное хранилище черновиков блюд
+# Временное хранилище черновиков блюд с автоматическим контролем памяти
 _meal_drafts = {}
+
+def set_draft(draft_id: str, draft_data: dict):
+    if len(_meal_drafts) > 60:
+        for k in list(_meal_drafts.keys())[:20]:
+            _meal_drafts.pop(k, None)
+    _meal_drafts[draft_id] = draft_data
 
 class MealStates(StatesGroup):
     waiting_meal_text = State()
@@ -67,11 +73,11 @@ async def handle_meal_text_input(message: Message, state: FSMContext):
             return
 
         draft_id = str(uuid.uuid4())[:8]
-        _meal_drafts[draft_id] = {
+        set_draft(draft_id, {
             "user_id": message.from_user.id,
             "data": data,
             "orig_data": dict(data)
-        }
+        })
 
         text = format_nutrition_result(data)
         text += "\n\n⚙️ <i>Вы можете скорректировать порцию кнопками ниже или сразу записать в дневник:</i>"
@@ -131,11 +137,11 @@ async def handle_food_photo(message: Message, state: FSMContext):
             return
 
         draft_id = str(uuid.uuid4())[:8]
-        _meal_drafts[draft_id] = {
+        set_draft(draft_id, {
             "user_id": message.from_user.id,
             "data": data,
             "orig_data": dict(data)
-        }
+        })
 
         text = format_nutrition_result(data)
         text += "\n\n⚙️ <i>Вы можете скорректировать порцию кнопками ниже или сразу записать в дневник:</i>"
@@ -302,11 +308,11 @@ async def handle_nutrition_free_text(message: Message):
             return
 
         draft_id = str(uuid.uuid4())[:8]
-        _meal_drafts[draft_id] = {
+        set_draft(draft_id, {
             "user_id": message.from_user.id,
             "data": data,
             "orig_data": dict(data)
-        }
+        })
 
         text = format_nutrition_result(data)
         text += "\n\n⚙️ <i>Вы можете скорректировать порцию кнопками ниже или сразу записать в дневник:</i>"

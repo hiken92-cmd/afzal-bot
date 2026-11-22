@@ -12,6 +12,25 @@ logger = logging.getLogger(__name__)
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
+# Middleware для поддержки CORS и Telegram Web
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        response = web.Response(status=200)
+    else:
+        try:
+            response = await handler(request)
+        except web.HTTPException as ex:
+            response = ex
+        except Exception as e:
+            logger.error(f"Необработанная ошибка запроса {request.path}: {e}")
+            response = web.json_response({"error": str(e)}, status=500)
+
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    return response
+
 async def handle_index(request):
     """Отдает главную страницу веб-интерфейса Telegram WebApp."""
     index_path = os.path.join(WEB_DIR, "index.html")
@@ -79,8 +98,14 @@ async def api_currency_infographic(request):
         return web.Response(text=str(e), status=500)
 
 def create_web_app() -> web.Application:
-    """Создает приложение aiohttp для Web App."""
-    app = web.Application()
+    """
+    Создает приложение aiohttp для Web App с увеличенным лимитом загрузки фото (до 20 МБ)
+    и поддержкой CORS.
+    """
+    app = web.Application(
+        client_max_size=20 * 1024 * 1024, # 20 МБ для фото высокого разрешения
+        middlewares=[cors_middleware]
+    )
     
     # Роуты API
     app.router.add_get("/", handle_index)
@@ -93,4 +118,3 @@ def create_web_app() -> web.Application:
     app.router.add_static("/", WEB_DIR)
     
     return app
-
