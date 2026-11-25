@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 
 from .config import get_gemini_api_key, get_gemini_model
-from .ai_service import optimize_image_for_vision
+from .ai_service import optimize_image_for_vision, extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,9 @@ async def translate_image_ocr(image_bytes: bytes, target_lang: str = "ru", style
                     temperature=0.1
                 )
             )
-            data = json.loads(response.text.strip())
+            if not response or not response.text:
+                raise ValueError(f"Модель {m} вернула пустой ответ")
+            data = extract_json(response.text.strip())
             return data
         except Exception as e:
             logger.warning(f"Ошибка OCR перевода {m}: {e}")

@@ -1,11 +1,12 @@
 import re
 import html
+import asyncio
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import Filter
+from aiogram.filters import Filter, StateFilter
 
 from ..database import get_user_mode, set_user_mode
 from ..keyboards import (
@@ -65,8 +66,8 @@ async def enter_currency_mode(message: Message, state: FSMContext):
     
     status_msg = await message.answer("⏳ <i>Формирую инфографику курсов в банках...</i>", parse_mode="HTML")
     try:
-        img_bytes = generate_currency_infographic_bytes(force_refresh=False)
-        caption = make_rates_caption(force_refresh=False)
+        img_bytes = await asyncio.to_thread(generate_currency_infographic_bytes, False)
+        caption = await asyncio.to_thread(make_rates_caption, False)
         
         photo_file = BufferedInputFile(img_bytes, filename="currency_banks_uz.jpg")
         await message.answer_photo(
@@ -84,8 +85,8 @@ async def enter_currency_mode(message: Message, state: FSMContext):
 async def send_infographic(message: Message):
     status_msg = await message.answer("🔄 <i>Обновляю котировки...</i>", parse_mode="HTML")
     try:
-        img_bytes = generate_currency_infographic_bytes(force_refresh=True)
-        caption = make_rates_caption(force_refresh=False)
+        img_bytes = await asyncio.to_thread(generate_currency_infographic_bytes, True)
+        caption = await asyncio.to_thread(make_rates_caption, False)
         photo_file = BufferedInputFile(img_bytes, filename="currency_banks_uz.jpg")
         await message.answer_photo(
             photo=photo_file,
@@ -121,7 +122,7 @@ async def prompt_uzs_to_usd(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("calc_usd:"))
 async def callback_calc_usd(callback: CallbackQuery):
     amount = float(callback.data.split(":")[1])
-    res = convert_usd_to_uzs(amount)
+    res = await asyncio.to_thread(convert_usd_to_uzs, amount)
     text = (
         f"💵 <b>${amount:,.0f} в узбекских сумах:</b>\n\n"
         f"🏛 <b>По курсу ЦБ РУз:</b> <code>{res['cbu_total_formatted']} UZS</code>\n"
@@ -134,7 +135,7 @@ async def callback_calc_usd(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("calc_uzs:"))
 async def callback_calc_uzs(callback: CallbackQuery):
     amount = float(callback.data.split(":")[1])
-    res = convert_uzs_to_usd(amount)
+    res = await asyncio.to_thread(convert_uzs_to_usd, amount)
     text = (
         f"🇺🇿 <b>{res['amount_uzs_formatted']} UZS в долларах:</b>\n\n"
         f"🏛 <b>По курсу ЦБ РУз:</b> <code>${res['cbu_usd']:,.2f}</code>\n"
@@ -144,12 +145,14 @@ async def callback_calc_uzs(callback: CallbackQuery):
     await callback.message.reply(text, parse_mode="HTML")
     await callback.answer()
 
-@router.message(CurrencyStates.waiting_usd_amount)
+@router.message(CurrencyStates.waiting_usd_amount, F.text)
 async def handle_input_usd(message: Message, state: FSMContext):
     clean = re.sub(r"[^\d.,]", "", message.text).replace(",", ".")
     try:
         amount = float(clean)
-        res = convert_usd_to_uzs(amount)
+        if not (0 < amount <= 1e12):
+            raise ValueError()
+        res = await asyncio.to_thread(convert_usd_to_uzs, amount)
         text = (
             f"💵 <b>${amount:,.2f} в узбекских сумах:</b>\n\n"
             f"🏛 <b>По курсу ЦБ РУз:</b> <code>{res['cbu_total_formatted']} UZS</code>\n"
@@ -159,14 +162,16 @@ async def handle_input_usd(message: Message, state: FSMContext):
         await state.clear()
         await message.answer(text, reply_markup=get_currency_menu_keyboard(), parse_mode="HTML")
     except ValueError:
-        await message.answer("⚠️ Введите число (например: <code>100</code> или <code>250.5</code>):", parse_mode="HTML")
+        await message.answer("⚠️ Введите положительное число (например: <code>100</code> или <code>250.5</code>):", parse_mode="HTML")
 
-@router.message(CurrencyStates.waiting_uzs_amount)
+@router.message(CurrencyStates.waiting_uzs_amount, F.text)
 async def handle_input_uzs(message: Message, state: FSMContext):
     clean = re.sub(r"[^\d.,]", "", message.text).replace(",", ".")
     try:
         amount = float(clean)
-        res = convert_uzs_to_usd(amount)
+        if not (0 < amount <= 1e12):
+            raise ValueError()
+        res = await asyncio.to_thread(convert_uzs_to_usd, amount)
         text = (
             f"🇺🇿 <b>{res['amount_uzs_formatted']} UZS в долларах:</b>\n\n"
             f"🏛 <b>По курсу ЦБ РУз:</b> <code>${res['cbu_usd']:,.2f}</code>\n"
@@ -176,16 +181,17 @@ async def handle_input_uzs(message: Message, state: FSMContext):
         await state.clear()
         await message.answer(text, reply_markup=get_currency_menu_keyboard(), parse_mode="HTML")
     except ValueError:
-        await message.answer("⚠️ Введите сумму сумов числом (например: <code>1000000</code>):", parse_mode="HTML")
+        await message.answer("⚠️ Введите положительную сумму сумов числом (например: <code>1000000</code>):", parse_mode="HTML")
 
 # Автоматический парсинг чисел, когда пользователь в режиме валютчика
-@router.message(F.text, IsCurrencyMode())
+@router.message(F.text, StateFilter(None), IsCurrencyMode())
 async def handle_auto_currency_input(message: Message):
     txt = message.text.lower().strip()
     if txt.startswith("/") or txt in [
         "📊 курсы в банках (инфографика)", "🔄 обновить курс",
         "🇺🇸 usd ➔ 🇺🇿 uzs", "🇺🇿 uzs ➔ 🇺🇸 usd", "🔙 главное меню",
-        "🥗 афзал нутрициолог", "🌐 афзал переводчик", "💵 афзал валютчик", "ℹ️ о боте"
+        "🥗 афзал нутрициолог", "🌐 афзал переводчик", "💵 афзал валютчик", "ℹ️ о боте",
+        "📱 открыть веб-приложение", "📱 веб-интерфейс (сайт)"
     ]:
         return
 
@@ -194,18 +200,18 @@ async def handle_auto_currency_input(message: Message):
 
     try:
         val = float(clean)
-        if val <= 0:
+        if not (0 < val <= 1e12):
             return
 
         if is_usd or val <= 10000:
-            res = convert_usd_to_uzs(val)
+            res = await asyncio.to_thread(convert_usd_to_uzs, val)
             text = (
                 f"💵 <b>Расчет для ${val:,.2f}:</b>\n\n"
                 f"🏛 <b>По курсу ЦБ РУз:</b> <code>{res['cbu_total_formatted']} UZS</code>\n"
                 f"🟢 <b>В банке (сдать USD):</b> <code>{res['bank_total_formatted']} UZS</code>"
             )
         else:
-            res = convert_uzs_to_usd(val)
+            res = await asyncio.to_thread(convert_uzs_to_usd, val)
             text = (
                 f"🇺🇿 <b>Расчет для {res['amount_uzs_formatted']} UZS:</b>\n\n"
                 f"🏛 <b>По курсу ЦБ РУз:</b> <code>${res['cbu_usd']:,.2f}</code>\n"

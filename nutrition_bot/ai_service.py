@@ -189,6 +189,8 @@ async def analyze_food_image(image_bytes: bytes, user_note: str = "", precision:
                 )
             )
             
+            if not response or not response.text:
+                raise ValueError(f"Модель {model_name} вернула пустой ответ")
             raw_text = response.text.strip()
             data = extract_json(raw_text)
             
@@ -251,6 +253,8 @@ async def analyze_meal_text(text: str, precision: str = "expert") -> Dict[str, A
                 )
             )
             
+            if not response or not response.text:
+                raise ValueError(f"Модель {model_name} вернула пустой ответ")
             raw_text = response.text.strip()
             data = extract_json(raw_text)
             

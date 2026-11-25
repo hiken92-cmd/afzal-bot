@@ -84,6 +84,9 @@ foodPhotoInput.addEventListener('change', async (e) => {
         })
       });
       const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
       renderNutritionResult(data);
     } catch (err) {
       alert('Ошибка анализа: ' + err.message);
@@ -113,6 +116,9 @@ document.getElementById('btnAnalyzeText').addEventListener('click', async () => 
       })
     });
     const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
     renderNutritionResult(data);
   } catch (err) {
     alert('Ошибка: ' + err.message);
@@ -127,7 +133,13 @@ function renderNutritionResult(data) {
 
   if (!data.is_food) {
     document.getElementById('resDishName').textContent = '⚠️ Не еда';
+    document.getElementById('resConfidence').textContent = '—';
     document.getElementById('resPortionMeta').textContent = '';
+    document.getElementById('resCalories').textContent = '0';
+    document.getElementById('resProteins').textContent = '0г';
+    document.getElementById('resFats').textContent = '0г';
+    document.getElementById('resCarbs').textContent = '0г';
+    document.getElementById('resHiddenAlert').classList.add('hidden');
     document.getElementById('resAdviceText').textContent = data.nutritionist_advice || 'На фото не найдено блюда.';
     document.getElementById('resAdviceBox').classList.remove('hidden');
     document.getElementById('resIngredientsBlock').classList.add('hidden');
@@ -153,13 +165,19 @@ function renderNutritionResult(data) {
     alertEl.classList.add('hidden');
   }
 
-  // Ингредиенты
+  // Ингредиенты (безопасная вставка без XSS)
   const ingList = document.getElementById('resIngredientsList');
   ingList.innerHTML = '';
   if (data.ingredients && data.ingredients.length > 0) {
     data.ingredients.forEach(i => {
       const li = document.createElement('li');
-      li.innerHTML = `<span>${i.name} (${i.weight_g}г)</span> <b>${i.calories} ккал</b>`;
+      const span = document.createElement('span');
+      span.textContent = `${i.name || 'Ингредиент'} (${i.weight_g || 0}г)`;
+      const b = document.createElement('b');
+      b.textContent = `${i.calories || 0} ккал`;
+      li.appendChild(span);
+      li.appendChild(document.createTextNode(' '));
+      li.appendChild(b);
       ingList.appendChild(li);
     });
     document.getElementById('resIngredientsBlock').classList.remove('hidden');
@@ -192,6 +210,9 @@ document.getElementById('btnTranslate').addEventListener('click', async () => {
       })
     });
     const res = await response.json();
+    if (!response.ok || res.error) {
+      throw new Error(res.error || `HTTP ${response.status}`);
+    }
     document.getElementById('translateOutputText').textContent = res.translated_text || '';
     document.getElementById('translateOutputBox').classList.remove('hidden');
   } catch (err) {

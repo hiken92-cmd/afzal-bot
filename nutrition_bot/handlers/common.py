@@ -1,3 +1,4 @@
+import html
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
@@ -21,8 +22,9 @@ async def cmd_start(message: Message, state: FSMContext):
     await get_or_create_user(message.from_user.id, message.from_user.username)
     await set_user_mode(message.from_user.id, "root")
     
+    safe_name = html.escape(message.from_user.first_name or "друг")
     welcome_text = (
-        f"👋 <b>Здравствуйте, {message.from_user.first_name}!</b>\n\n"
+        f"👋 <b>Здравствуйте, {safe_name}!</b>\n\n"
         "Добро пожаловать в персонального ИИ-помощника Афзала.\n\n"
         "🌟 <b>Выберите нужный раздел в меню или откройте веб-сайт:</b>\n"
         "🥗 <b>Афзал Нутрициолог</b> — счетчик калорий (КБЖУ) по фото, декомпозиция ингредиентов и дневник.\n"
@@ -120,15 +122,3 @@ async def btn_about(message: Message):
         "   • Запуск полноэкранного интерфейса в один клик!"
     )
     await message.answer(about_text, reply_markup=get_root_menu_keyboard(), parse_mode="HTML")
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    help_text = (
-        "📖 <b>Справка по боту:</b>\n\n"
-        "• Для подсчета калорий перейдите в <b>«🥗 Афзал Нутрициолог»</b> и пришлите фото или текст блюда.\n"
-        "• Для перевода перейдите в <b>«🌐 Афзал Переводчик»</b> и отправьте текст или картинку с текстом.\n"
-        "• Для курсов валют откройте <b>«💵 Афзал Валютчик»</b>.\n"
-        "• Нажмите <b>«📱 Веб-интерфейс (Сайт)»</b> для запуска приложения в виде сайта.\n\n"
-        "Команда /start возвращает вас к выбору режима."
-    )
-    await message.answer(help_text, parse_mode="HTML")

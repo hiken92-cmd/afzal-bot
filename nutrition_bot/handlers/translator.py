@@ -2,7 +2,7 @@ import html
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Filter
+from aiogram.filters import Filter, StateFilter
 from aiogram.fsm.context import FSMContext
 
 from ..database import get_user_mode, get_translator_settings, set_translator_settings
@@ -90,6 +90,10 @@ async def handle_translate_photo(message: Message):
             file_io.seek(0)
             image_bytes = file_io.read()
 
+        if not image_bytes or len(image_bytes) < 100:
+            await status_msg.edit_text("⚠️ <i>Не удалось получить фото. Пожалуйста, отправьте его еще раз.</i>", parse_mode="HTML")
+            return
+
         settings = await get_translator_settings(message.from_user.id)
         target_lang = settings["target_lang"]
         style = settings["style"]
@@ -115,12 +119,14 @@ async def handle_translate_photo(message: Message):
         logger.error(f"Ошибка перевода фото: {e}")
         await status_msg.edit_text(f"❌ Ошибка перевода: <code>{html.escape(str(e))}</code>", parse_mode="HTML")
 
-@router.message(F.text, IsTranslatorMode())
+@router.message(F.text, StateFilter(None), IsTranslatorMode())
 async def handle_translate_text(message: Message):
     txt = message.text.strip()
-    if txt.startswith("/") or txt in [
+    txt_low = txt.lower()
+    if txt_low.startswith("/") or txt_low in [
         "🌐 выбрать язык", "🎭 стиль перевода", "📸 перевод по фото", "🔙 главное меню",
-        "🥗 афзал нутрициолог", "🌐 афзал переводчик", "💵 афзал валютчик", "ℹ️ о боте"
+        "🥗 афзал нутрициолог", "🌐 афзал переводчик", "💵 афзал валютчик", "ℹ️ о боте",
+        "📱 открыть веб-приложение", "📱 веб-интерфейс (сайт)"
     ]:
         return
 

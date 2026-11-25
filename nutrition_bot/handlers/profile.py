@@ -49,7 +49,7 @@ def get_profile_info_text(profile: dict) -> str:
 
     return (
         "🎯 <b>Ваша индивидуальная суточная норма КБЖУ:</b>\n\n"
-        f"🔥 Калории: <b>{cal:,.0f} ккал</b>\n"
+        f"🔥 Калории: <b>{cal:,.0f} ккал</b>\n".replace(",", " ") +
         f"🥩 Белки: <b>{p:.0f} г</b>  |  🥑 Жиры: <b>{f:.0f} г</b>  |  🍞 Углеводы: <b>{c:.0f} г</b>\n\n"
         "📋 <b>Ваши параметры:</b>\n"
         f" • Пол: <b>{g}</b>\n"
@@ -57,7 +57,7 @@ def get_profile_info_text(profile: dict) -> str:
         f" • Активность: <b>{act_str}</b>\n"
         f" • Цель: <b>{goal_str}</b>\n\n"
         "💡 <i>Расчет выполнен по международной медицинской формуле Миффлина-Сан Жеора. "
-        "Вы можете пересчитать норму в любой момент.</i>".replace(",", " ")
+        "Вы можете пересчитать норму в любой момент.</i>"
     )
 
 def get_calc_goal_keyboard() -> InlineKeyboardMarkup:
@@ -99,7 +99,7 @@ async def step_gender(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("2️⃣ <b>Введите ваш возраст (полных лет):</b>\nНапример: <code>28</code>", parse_mode="HTML")
     await callback.answer()
 
-@router.message(ProfileStates.waiting_age)
+@router.message(ProfileStates.waiting_age, F.text)
 async def step_age(message: Message, state: FSMContext):
     try:
         age = int(message.text.strip())
@@ -111,7 +111,7 @@ async def step_age(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("⚠️ Пожалуйста, введите корректный возраст от 10 до 100:")
 
-@router.message(ProfileStates.waiting_weight)
+@router.message(ProfileStates.waiting_weight, F.text)
 async def step_weight(message: Message, state: FSMContext):
     try:
         w_str = message.text.replace(",", ".").strip()
@@ -124,7 +124,7 @@ async def step_weight(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("⚠️ Введите корректный вес в кг (например: 70 или 82.5):")
 
-@router.message(ProfileStates.waiting_height)
+@router.message(ProfileStates.waiting_height, F.text)
 async def step_height(message: Message, state: FSMContext):
     try:
         height = float(message.text.replace(",", ".").strip())

@@ -3,6 +3,7 @@ import html
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -94,11 +95,16 @@ async def btn_prompt_text(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-@router.message(MealStates.waiting_meal_text)
+@router.message(MealStates.waiting_meal_text, F.text)
 async def handle_meal_text_input(message: Message, state: FSMContext):
     await state.clear()
     
-    if message.text in ["🔙 Главное меню", "📸 Распознать по фото", "📊 Дневник и статистика", "🎯 Моя норма КБЖУ"]:
+    txt_low = message.text.strip().lower()
+    if txt_low.startswith("/") or txt_low in [
+        "🔙 главное меню", "📸 распознать по фото", "📊 дневник и статистика",
+        "🎯 моя норма кбжу", "🎯 точность: эксперт", "⚡️ точность: быстрый",
+        "🗑 удалить последний прием", "📱 открыть веб-приложение", "📱 веб-интерфейс (сайт)"
+    ]:
         return
 
     status_msg = await message.answer("⚡️ <i>Рассчитываю состав и КБЖУ блюда...</i>", parse_mode="HTML")
@@ -324,13 +330,16 @@ async def btn_delete_last(message: Message):
 
 
 # Свободный текстовый ввод блюда в режиме нутрициолога
-@router.message(F.text)
+@router.message(F.text, StateFilter(None))
 async def handle_nutrition_free_text(message: Message):
     txt = message.text.strip()
-    if txt.startswith("/") or txt in [
+    txt_low = txt.lower()
+    if txt_low.startswith("/") or txt_low in [
         "📸 распознать по фото", "✍️ описать текстом", "📊 дневник и статистика",
-        "🎯 моя норма кбжу", "🗑 удалить последний прием", "🔙 главное меню",
-        "🥗 афзал нутрициолог", "🌐 афзал переводчик", "💵 афзал валютчик", "ℹ️ о боте"
+        "🎯 моя норма кбжу", "🎯 точность: эксперт", "⚡️ точность: быстрый",
+        "🗑 удалить последний прием", "🔙 главное меню",
+        "🥗 афзал нутрициолог", "🌐 афзал переводчик", "💵 афзал валютчик", "ℹ️ о боте",
+        "📱 открыть веб-приложение", "📱 веб-интерфейс (сайт)"
     ]:
         return
 

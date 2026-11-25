@@ -46,7 +46,7 @@ async def start_web_server():
     return runner
 
 async def main():
-    if not BOT_TOKEN or "8701243779" not in BOT_TOKEN:
+    if not BOT_TOKEN or ":" not in BOT_TOKEN:
         logger.error("BOT_TOKEN не установлен!")
         return
 
@@ -64,13 +64,13 @@ async def main():
     )
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Регистрация роутеров в строгом порядке
+    # Регистрация роутеров в строгом порядке (сначала профильные/FSM и статистика, затем catch-all)
     dp.include_router(common.router)
+    dp.include_router(profile.router)
+    dp.include_router(stats.router)
     dp.include_router(currency.router)
     dp.include_router(translator.router)
     dp.include_router(meals.router)
-    dp.include_router(stats.router)
-    dp.include_router(profile.router)
 
     me = await bot.get_me()
     logger.info(f"Запущен бот @{me.username} (ID: {me.id})")
@@ -103,11 +103,12 @@ async def keep_alive_ping():
     """Фоновый пинг раз в 10 минут, предотвращающий засыпание Render."""
     import aiohttp
     await asyncio.sleep(60) # ждем 1 мин после старта
+    timeout = aiohttp.ClientTimeout(total=15)
     while True:
         try:
             if WEB_APP_URL and WEB_APP_URL.startswith("https://"):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{WEB_APP_URL}/api/currency", timeout=15) as resp:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(f"{WEB_APP_URL}/health") as resp:
                         logger.info(f"Keep-alive ping status: {resp.status}")
         except Exception as e:
             logger.debug(f"Keep-alive ping error: {e}")

@@ -2,10 +2,14 @@ import io
 import time
 import json
 import re
+import threading
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Tuple
 from PIL import Image, ImageDraw, ImageFont
+
+UZ_TZ = timezone(timedelta(hours=5))
+_cache_lock = threading.Lock()
 
 _rates_cache = {
     "timestamp": 0,
@@ -117,94 +121,94 @@ def normalize_bank_name(raw: str) -> str:
 def fetch_live_rates(force_refresh: bool = False):
     """Получение реальных котировок ЦБ РУз и коммерческих банков Узбекистана."""
     global _rates_cache
-    now = time.time()
-    if not force_refresh and _rates_cache["cbu"] and _rates_cache["banks"] and (now - _rates_cache["timestamp"] < 120):
-        return _rates_cache["cbu"], _rates_cache["banks"]
+    with _cache_lock:
+        now = time.time()
+        if not force_refresh and _rates_cache["cbu"] and _rates_cache["banks"] and (now - _rates_cache["timestamp"] < 120):
+            return _rates_cache["cbu"], _rates_cache["banks"]
 
-    # 1. Загрузка котировок ЦБ РУз
-    cbu_res = {
-        "usd": {"rate": 11861.96, "diff": 23.04, "date": datetime.now().strftime("%d.%m.%Y")},
-        "eur": {"rate": 13278.28, "diff": 29.34},
-        "rub": {"rate": 147.13, "diff": 0.08}
-    }
-    try:
-        url_cbu = "https://cbu.uz/ru/arkhiv-kursov-valyut/json/"
-        req_cbu = urllib.request.Request(url_cbu, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req_cbu, timeout=6) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            usd = next((x for x in data if x["Ccy"] == "USD"), None)
-            eur = next((x for x in data if x["Ccy"] == "EUR"), None)
-            rub = next((x for x in data if x["Ccy"] == "RUB"), None)
-            if usd:
-                cbu_res["usd"]["rate"] = float(usd["Rate"])
-                cbu_res["usd"]["diff"] = float(usd["Diff"])
-                cbu_res["usd"]["date"] = usd["Date"]
-            if eur:
-                cbu_res["eur"]["rate"] = float(eur["Rate"])
-                cbu_res["eur"]["diff"] = float(eur["Diff"])
-            if rub:
-                cbu_res["rub"]["rate"] = float(rub["Rate"])
-                cbu_res["rub"]["diff"] = float(rub["Diff"])
-    except Exception:
-        pass
-
-    # 2. Загрузка реальных курсов коммерческих банков из онлайн-источников
-    banks_list = []
-    sources = ["https://dollaruz.net/", "https://dollaruz.pw/"]
-    for url_banks in sources:
+        # 1. Загрузка котировок ЦБ РУз
+        cbu_res = {
+            "usd": {"rate": 11861.96, "diff": 23.04, "date": datetime.now(UZ_TZ).strftime("%d.%m.%Y")},
+            "eur": {"rate": 13278.28, "diff": 29.34},
+            "rub": {"rate": 147.13, "diff": 0.08}
+        }
         try:
-            req_b = urllib.request.Request(url_banks, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-            })
-            with urllib.request.urlopen(req_b, timeout=6) as resp:
-                html = resp.read().decode("utf-8", errors="ignore")
-                idx1 = html.find('id="tabusd"')
-                idx2 = html.find('id="tabrub"')
-                if idx1 != -1:
-                    section = html[idx1:idx2] if idx2 != -1 else html[idx1:idx1+18000]
-                    rows = section.split('class="nk-tb-item')
-                    for r in rows[1:]:
-                        cols = re.findall(r'<div class="nk-tb-col[^"]*">(.*?)</div>', r, re.DOTALL)
-                        if len(cols) >= 3:
-                            raw_name = re.sub(r'<[^>]+>', ' ', cols[0]).strip()
-                            clean_name = normalize_bank_name(raw_name)
-                            buy_val = clean_num(cols[1])
-                            sell_val = clean_num(cols[2])
-                            if buy_val > 1000 and sell_val > 1000:
-                                banks_list.append({
-                                    "name": clean_name,
-                                    "buy": buy_val,
-                                    "sell": sell_val
-                                })
-            if len(banks_list) >= 5:
-                break
+            url_cbu = "https://cbu.uz/ru/arkhiv-kursov-valyut/json/"
+            req_cbu = urllib.request.Request(url_cbu, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req_cbu, timeout=6) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                usd = next((x for x in data if x["Ccy"] == "USD"), None)
+                eur = next((x for x in data if x["Ccy"] == "EUR"), None)
+                rub = next((x for x in data if x["Ccy"] == "RUB"), None)
+                if usd:
+                    cbu_res["usd"]["rate"] = float(usd["Rate"])
+                    cbu_res["usd"]["diff"] = float(usd["Diff"])
+                    cbu_res["usd"]["date"] = usd["Date"]
+                if eur:
+                    cbu_res["eur"]["rate"] = float(eur["Rate"])
+                    cbu_res["eur"]["diff"] = float(eur["Diff"])
+                if rub:
+                    cbu_res["rub"]["rate"] = float(rub["Rate"])
+                    cbu_res["rub"]["diff"] = float(rub["Diff"])
         except Exception:
-            continue
+            pass
 
-    # Резервный список только если оба сайта недоступны (с актуальными котировками)
-    if not banks_list:
-        base_rate = cbu_res["usd"]["rate"]
-        fallback_defs = [
-            ("Инфинбанк (InFinBank)", 11870.0, 11935.0),
-            ("НБУ (Нацбанк РУз)", 11830.0, 11910.0),
-            ("Капиталбанк (Kapitalbank)", 11845.0, 11935.0),
-            ("Давр Банк (Davr Bank)", 11820.0, 11890.0),
-            ("Asia Alliance Bank", 11860.0, 11935.0),
-            ("Ипак Йули Банк", 11820.0, 11910.0),
-            ("Хамкорбанк (Hamkorbank)", 11820.0, 11930.0),
-            ("SQB (Узпромстройбанк)", 11820.0, 11930.0),
-            ("Агробанк (Agrobank)", 11820.0, 11910.0),
-            ("Ипотека-банк (Ipoteka Bank)", 11850.0, 11935.0),
-            ("Халк Банк (Xalq Banki)", 11810.0, 11930.0),
-            ("Асакабанк (Asaka Bank)", 11830.0, 11930.0)
-        ]
-        for name, buy, sell in fallback_defs:
-            banks_list.append({"name": name, "buy": buy, "sell": sell})
+        # 2. Загрузка реальных курсов коммерческих банков из онлайн-источников
+        banks_list = []
+        sources = ["https://dollaruz.net/", "https://dollaruz.pw/"]
+        for url_banks in sources:
+            try:
+                req_b = urllib.request.Request(url_banks, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+                })
+                with urllib.request.urlopen(req_b, timeout=6) as resp:
+                    html = resp.read().decode("utf-8", errors="ignore")
+                    idx1 = html.find('id="tabusd"')
+                    idx2 = html.find('id="tabrub"')
+                    if idx1 != -1:
+                        section = html[idx1:idx2] if idx2 != -1 else html[idx1:idx1+18000]
+                        rows = section.split('class="nk-tb-item')
+                        for r in rows[1:]:
+                            cols = re.findall(r'<div class="nk-tb-col[^"]*">(.*?)</div>', r, re.DOTALL)
+                            if len(cols) >= 3:
+                                raw_name = re.sub(r'<[^>]+>', ' ', cols[0]).strip()
+                                clean_name = normalize_bank_name(raw_name)
+                                buy_val = clean_num(cols[1])
+                                sell_val = clean_num(cols[2])
+                                if buy_val > 1000 and sell_val > 1000:
+                                    banks_list.append({
+                                        "name": clean_name,
+                                        "buy": buy_val,
+                                        "sell": sell_val
+                                    })
+                if len(banks_list) >= 5:
+                    break
+            except Exception:
+                continue
 
-    _rates_cache["cbu"] = cbu_res
-    _rates_cache["banks"] = banks_list
-    _rates_cache["timestamp"] = now
-    return cbu_res, banks_list
+        # Резервный список только если оба сайта недоступны (с актуальными котировками)
+        if not banks_list:
+            fallback_defs = [
+                ("Инфинбанк (InFinBank)", 11870.0, 11935.0),
+                ("НБУ (Нацбанк РУз)", 11830.0, 11910.0),
+                ("Капиталбанк (Kapitalbank)", 11845.0, 11935.0),
+                ("Давр Банк (Davr Bank)", 11820.0, 11890.0),
+                ("Asia Alliance Bank", 11860.0, 11935.0),
+                ("Ипак Йули Банк", 11820.0, 11910.0),
+                ("Хамкорбанк (Hamkorbank)", 11820.0, 11930.0),
+                ("SQB (Узпромстройбанк)", 11820.0, 11930.0),
+                ("Агробанк (Agrobank)", 11820.0, 11910.0),
+                ("Ипотека-банк (Ipoteka Bank)", 11850.0, 11935.0),
+                ("Халк Банк (Xalq Banki)", 11810.0, 11930.0),
+                ("Асакабанк (Asaka Bank)", 11830.0, 11930.0)
+            ]
+            for name, buy, sell in fallback_defs:
+                banks_list.append({"name": name, "buy": buy, "sell": sell})
+
+        _rates_cache["cbu"] = cbu_res
+        _rates_cache["banks"] = banks_list
+        _rates_cache["timestamp"] = now
+        return cbu_res, banks_list
 
 def get_cbu_rates() -> Dict[str, Any]:
     """Возвращает котировки Центрального Банка РУз."""
@@ -282,7 +286,7 @@ def generate_currency_infographic_bytes(force_refresh: bool = False) -> bytes:
     
     # Заголовок
     draw.text((60, 32), "КУРСЫ ВАЛЮТ В БАНКАХ УЗБЕКИСТАНА", font=font_title, fill="#38BDF8")
-    now_str = datetime.now().strftime("%d.%m.%Y • %H:%M")
+    now_str = datetime.now(UZ_TZ).strftime("%d.%m.%Y • %H:%M")
     draw.text((60, 92), f"USD / UZS (Доллар к Суму)  |  Актуально на: {now_str}  |  Афзал Валютчик", font=font_subtitle, fill="#94A3B8")
 
     # Баннер ЦБ РУз

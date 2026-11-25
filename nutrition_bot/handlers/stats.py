@@ -1,9 +1,11 @@
+import html
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Filter
 
 from ..database import (
     get_user_mode,
+    set_user_mode,
     get_today_meals,
     get_today_stats,
     get_user_profile,
@@ -29,7 +31,6 @@ def make_progress_bar(current: float, target: float, length: int = 10) -> str:
 @router.message(F.text == "📊 Дневник и статистика")
 async def show_diary_stats(message: Message):
     user_id = message.from_user.id
-    from ..database import set_user_mode
     await set_user_mode(user_id, "nutrition")
     stats = await get_today_stats(user_id)
     meals = await get_today_meals(user_id)
@@ -46,18 +47,18 @@ async def show_diary_stats(message: Message):
     c_bar = make_progress_bar(stats["carbs"], target_c)
 
     rem_cal = target_cal - stats["calories"]
-    rem_str = f"Осталось: <b>{rem_cal:,.0f} ккал</b>" if rem_cal >= 0 else f"Превышение: <b>{abs(rem_cal):,.0f} ккал</b>"
+    rem_str = f"Осталось: <b>{rem_cal:,.0f} ккал</b>".replace(",", " ") if rem_cal >= 0 else f"Превышение: <b>{abs(rem_cal):,.0f} ккал</b>".replace(",", " ")
 
     lines = [
         "📊 <b>Ваш дневник питания за сегодня:</b>\n",
-        f"🔥 <b>Калории:</b> {stats['calories']:,.0f} / {target_cal:,.0f} ккал",
+        f"🔥 <b>Калории:</b> {stats['calories']:,.0f} / {target_cal:,.0f} ккал".replace(",", " "),
         f"└ {cal_bar}  •  {rem_str}\n",
         f"🥩 <b>Белки:</b> {stats['proteins']:.1f} / {target_p:.0f} г",
         f"└ {p_bar}\n",
         f"🥑 <b>Жиры:</b> {stats['fats']:.1f} / {target_f:.0f} г",
         f"└ {f_bar}\n",
         f"🍞 <b>Углеводы:</b> {stats['carbs']:.1f} / {target_c:.0f} г",
-        f"└ {c_bar}\n".replace(",", " "),
+        f"└ {c_bar}\n",
         "━━━━━━━━━━━━━━━━━━"
     ]
 
@@ -67,9 +68,10 @@ async def show_diary_stats(message: Message):
     else:
         lines.append(f"🍽 <b>История приемов пищи ({len(meals)}):</b>")
         for idx, m in enumerate(meals[:10], start=1):
-            time_str = m["created_at"].split()[1][:5] if " " in m["created_at"] else ""
+            time_str = m.get("time_local") or (m["created_at"].split()[1][:5] if " " in m.get("created_at", "") else "")
+            safe_name = html.escape(m.get("meal_name", "Блюдо"))
             lines.append(
-                f"{idx}. <b>{m['meal_name']}</b> (~{m['weight_g']:.0f}г) <i>[{time_str}]</i>\n"
+                f"{idx}. <b>{safe_name}</b> (~{m['weight_g']:.0f}г) <i>[{time_str}]</i>\n"
                 f"   └ <b>{m['calories']:.0f} ккал</b> (Б:{m['proteins']:.1f}г | Ж:{m['fats']:.1f}г | У:{m['carbs']:.1f}г)"
             )
         reply_markup = get_stats_actions_keyboard()
